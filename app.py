@@ -1,17 +1,27 @@
 import streamlit as st
 import pandas as pd
 import os
+import json
 from google.cloud import bigquery
+from google.oauth2 import service_account
 
 # 1. SETUP: Page Config
 st.set_page_config(page_title="DCS Dashboard", layout="wide")
 
-# 2. SETUP: Credentials
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "dcs-system-494410-5488af32c0c7.json"
+# 2. SETUP: Credentials (CLOUD VERSION)
+if "gcp_service_account" in st.secrets:
+    # We are in the Cloud
+    info = st.secrets["gcp_service_account"]
+    credentials = service_account.Credentials.from_service_account_info(info)
+    client = bigquery.Client(credentials=credentials, project=info["project_id"])
+else:
+    # We are on your Local Computer
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "dcs-system-494410-5488af32c0c7.json"
+    client = bigquery.Client()
+
 PROJECT_ID = "dcs-system-494410"  
 DATASET_ID = "Designers_system"
 TABLE_ID = f"{PROJECT_ID}.{DATASET_ID}.T2_Design_Inventory"
-
 # 3. DATA FETCHING (Cached for speed)
 @st.cache_data(ttl=30) # Refreshes every 30 seconds
 def load_data():
