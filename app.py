@@ -23,12 +23,12 @@ PROJECT_ID = "dcs-system-494410"
 DATASET_ID = "Designers_system"
 TABLE_ID = f"{PROJECT_ID}.{DATASET_ID}.T2_Design_Inventory"
 # 3. DATA FETCHING (Cached for speed)
-@st.cache_data(ttl=30) # Refreshes every 30 seconds
+@st.cache_data(ttl=30) 
 def load_data():
-    client = bigquery.Client(project=PROJECT_ID)
-    # We only pull designs that are NOT archived
+    # REMOVE the 'client = ...' line from here. 
+    # Use the 'client' we already created at the top of the script.
     query = f"SELECT * FROM `{TABLE_ID}` WHERE is_archived = FALSE"
-    df = client.query(query).to_dataframe()
+    df = client.query(query).to_dataframe() # This now uses the correct 'client'
     return df
 
 # Load the data
