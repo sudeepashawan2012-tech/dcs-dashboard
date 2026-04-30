@@ -3,7 +3,7 @@ name: Factory Data Sync
 on:
   schedule:
     # This runs every hour, on the hour.
-    - cron: '0 * * * *'
+    - cron: '*/2 * * * *'
   workflow_dispatch: # Allows you to also run it manually from GitHub
 
 jobs:
