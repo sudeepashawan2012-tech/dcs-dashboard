@@ -36,8 +36,8 @@ def update_google_sheets(t2_rows):
     # 1. Update COMPILATION Tab (Starts Row 2)
     try:
         comp_sheet = spreadsheet.worksheet("COMPILATION")
-        comp_sheet.batch_clear(["A2:H2000"]) 
-        comp_data = [[r['designer_code'], r['design_no'], r['budget'], r['order_date'], r['order_type'], r['priority'], r['remark'], r['status']] for r in t2_rows]
+        comp_sheet.batch_clear(["A2:H2500"]) 
+        comp_data = [[r['designer_code'], r['design_no'], r['budget'], r['order_date'], r['order_type'], r['priority'], r['remark'], r['status']] for r in t2_rows if not r['is_archived']]
         if comp_data:
             comp_sheet.update(range_name="A2", values=comp_data)
             print("✅ COMPILATION tab updated.")
@@ -48,6 +48,7 @@ def update_google_sheets(t2_rows):
     name_lookup = {v: k for k, v in designer_mapping.items()}
     designer_groups = {}
     for row in t2_rows:
+        if row['is_archived']: continue # Skip archived items for designer sheets
         d_name = name_lookup.get(row['designer_code'])
         if d_name:
             if d_name not in designer_groups: designer_groups[d_name] = []
@@ -56,9 +57,9 @@ def update_google_sheets(t2_rows):
     for d_name, data in designer_groups.items():
         try:
             ws = spreadsheet.worksheet(d_name)
-            ws.batch_clear(["A4:G2000"]) 
+            ws.batch_clear(["A4:G1000"]) 
             ws.update(range_name="A4", values=data)
-            print(f"✅ Tab {d_name} updated (Row 4+).")
+            print(f"✅ Tab {d_name} updated.")
         except Exception:
             print(f"⚠️ Tab {d_name} not found. Skipping...")
 
@@ -79,6 +80,18 @@ def run_migration():
         concept_raw = str(row.get('Concept', '')).strip().upper()
         product_raw = str(row.get('Product', '')).strip().upper()
         designer_raw = str(row.get('Designer', '')).strip().upper()
+        
+        # --- NEW ADMIN & ARCHIVE LOGIC ---
+        admin_status = str(row.get('Admin_Status', 'ACTIVE')).strip().upper()
+        archive_flag = str(row.get('Archive', 'NO')).strip().upper()
+        
+        is_archived = False
+        if admin_status == 'CANCELLED' or archive_flag == 'YES':
+            is_archived = True
+
+        current_status = "PENDING"
+        if admin_status == 'ON HOLD':
+            current_status = "ON HOLD"
         
         try: qty = int(row.get('Qty', 0))
         except: qty = 0
@@ -103,17 +116,16 @@ def run_migration():
                 "design_no": design_no, "parent_order_id": ord_id, "designer_code": d_code,
                 "budget": str(row.get('Budget', '')), "order_date": formatted_date,
                 "order_type": str(row.get('Order Type', 'Stock')), "priority": priority,
-                "remark": str(row.get('Remark', '')), "status": "PENDING", "is_archived": False
+                "remark": str(row.get('Remark', '')), "status": current_status, "is_archived": is_archived
             })
         sequence_registry[combination_key] = current_seq + qty
 
-    print(f"Generated {len(t2_rows)} design items. Uploading to BigQuery...")
+    print(f"Uploading {len(t2_rows)} design items to BigQuery...")
     df_t2 = pd.DataFrame(t2_rows)
     bq_client.load_table_from_dataframe(df_t2, f"{PROJECT_ID}.{DATASET_ID}.T2_Design_Inventory", job_config=bigquery.LoadJobConfig(write_disposition="WRITE_TRUNCATE")).result()
     
-    # Final step: Write to Google Sheets
     update_google_sheets(t2_rows)
-    print("✅ Migration Complete! All systems updated.")
+    print("✅ Migration Complete!")
 
 if __name__ == "__main__":
     run_migration()
