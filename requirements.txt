@@ -4,3 +4,4 @@ google-cloud-bigquery
 db-dtypes
 gspread
 google-auth
+google-api-python-client
