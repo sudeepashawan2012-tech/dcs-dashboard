@@ -28,30 +28,49 @@ spreadsheet = gc.open_by_url(SHEET_URL)
 
 # --- MAPPINGS ---
 product_codes = { "BANGLE": "BG", "CHOKER": "CK", "NECKLACE": "NK", "BRACELET": "BR", "EARRINGS": "ER", "JHUMKA": "JH", "HARAM": "HR", "BELT": "BT", "PENDENT": "PD", "BAJUBAND": "BJ", "TOPS": "TP", "CHANDBALI": "CB", "RING": "RG", "HARAM CUM BELT": "HRBT", "NEW": "NW", "FULL SET": "FS" }
-concept_codes = { "TRADITIONAL + PAN MQ + COMPOSITE + STEPPING": "TRF", "OPEN CLOSE": "OPC", "COMPOSITE": "COM", "FLORAL + HIGHLIGHT": "FRL", "PAN MQ (SINGLE DOUBLE ROUND)": "PANMQ", "TRADITIONAL REGULAR": "TR", "LAYERS": "LAY", "MODERN / CONTEMPORARY": "MOC", "COLOURSTONE": "COL", "TAAR SPREADLOOK": "TSL", "MISCELLANEOUS": "MISC", "FULL SET": "FS" }
+concept_codes = { "TRADITIONAL + PAN MQ + COMPOSITE + STEPPING": "TRF", "OPEN CLOSE": "OPC", "COMPOSITE": "COM", "FLORAL + HIGHLIGHT": "FRL", "PAN MQ (SINGLE DOUBLE ROUND)": "PANMQ", "TRADITIONAL REGULAR": "TR", "LAYERS": "LAY", "MODERN / CONTEMPORARY": "MOC", "COLOURSTONE": "COL", "TAAR SPREADLOOK": "TSL", "DIFFERENT": "DIF", "FULL SET": "FS" }
 designer_mapping = {"BHAVIKA": "D02", "KAUSHIK": "D03", "SUMIT": "D04", "RAJKUMAR": "D05", "GOPAL": "D08", "AYAN": "D09", "HARSH": "D10", "SHRADDHA": "D11", "SUBRATO": "D13", "BISWAJIT": "D14", "PRAGATI": "D15", "SHUBHADEEP": "D16"}
 
 def update_google_sheets(t2_rows):
     print("Updating Google Sheets (Compilation and Designer Tabs)...")
     
-    # 1. Update COMPILATION Tab (Now includes Admin columns I and J)
+    # 1. Update COMPILATION Tab
     try:
         comp_sheet = spreadsheet.worksheet("COMPILATION")
-        comp_sheet.batch_clear(["A2:J2500"]) # Clears up to Column J
         
-        # Prepare data for Column A to J
+        # PROTECTION LOGIC: Read current manual entries before clearing
+        current_comp_values = comp_sheet.get_all_values()
+        manual_overrides = {}
+        
+        # Create a map of existing manual entries from Column I and J
+        # Row 0 is header, so we start from Row 1
+        for row in current_comp_values[1:]:
+            if len(row) >= 10:
+                d_no = str(row[1]).strip() # Design_no is Column B
+                manual_overrides[d_no] = {
+                    "admin": str(row[8]).strip(), # Column I
+                    "archive": str(row[9]).strip() # Column J
+                }
+
+        comp_sheet.batch_clear(["A2:J2500"]) 
+        
         comp_data = []
         for r in t2_rows:
-            # We don't filter out archived here because you need to see them to "un-archive" them if needed
+            d_no = r['design_no']
+            
+            # If user has manually typed something, keep it. Otherwise use script default.
+            final_admin = manual_overrides.get(d_no, {}).get("admin") or r['admin_status_manual']
+            final_archive = manual_overrides.get(d_no, {}).get("archive") or r['archive_manual']
+
             comp_data.append([
-                r['designer_code'], r['design_no'], r['budget'], r['order_date'], 
+                r['designer_code'], d_no, r['budget'], r['order_date'], 
                 r['order_type'], r['priority'], r['remark'], r['status'],
-                r['admin_status_manual'], r['archive_manual']
+                final_admin, final_archive
             ])
             
         if comp_data:
             comp_sheet.update(range_name="A2", values=comp_data)
-            print("✅ COMPILATION tab updated.")
+            print("✅ COMPILATION tab updated with protection for Column I & J.")
     except Exception as e:
         print(f"❌ Error updating COMPILATION: {e}")
 
@@ -59,7 +78,7 @@ def update_google_sheets(t2_rows):
     name_lookup = {v: k for k, v in designer_mapping.items()}
     designer_groups = {}
     for row in t2_rows:
-        if row['is_archived']: continue # Archived items stay hidden from Designers
+        if row['is_archived']: continue 
         d_name = name_lookup.get(row['designer_code'])
         if d_name:
             if d_name not in designer_groups: designer_groups[d_name] = []
@@ -80,16 +99,15 @@ def run_migration():
     try:
         comp_sheet = spreadsheet.worksheet("COMPILATION")
         existing_comp = comp_sheet.get_all_records()
-        # Lookup format: { 'DESIGN_NO': {'status': 'HOLD', 'archive': 'YES'} }
         overrides = {
             str(r.get('design_no')): {
                 'admin_status': str(r.get('Admin_Status', 'ACTIVE')).strip().upper(),
                 'archive': str(r.get('Archive', 'NO')).strip().upper(),
-                'last_status': str(r.get('status', 'PENDING')) # Keep what Watcher found
+                'last_status': str(r.get('status', 'PENDING')) 
             } for r in existing_comp if r.get('design_no')
         }
     except:
-        print("⚠️ COMPILATION tab empty or not found. Proceeding without overrides.")
+        print("⚠️ COMPILATION tab empty. Proceeding with defaults.")
         overrides = {}
 
     # --- B. FETCH MASTER ORDERS FROM T1 ---
@@ -100,7 +118,6 @@ def run_migration():
     t2_rows = []
     sequence_registry = {}
 
-    print("Processing orders and applying overrides...")
     for index, row in df_orders.iterrows():
         ord_id = str(row.get('ORD_ID', '')).strip()
         if not ord_id or ord_id.lower() == 'nan': continue
@@ -134,7 +151,7 @@ def run_migration():
             if admin_status == 'CANCELLED' or archive_flag == 'YES':
                 is_archived = True
 
-            # Determine Status: Prioritize COMPLETED from Watcher, then check for HOLD
+            # If Watcher already marked it COMPLETED, don't let migrate.py flip it back
             final_status = row_override['last_status']
             if final_status != 'COMPLETED':
                 if admin_status == 'ON HOLD':
@@ -145,9 +162,6 @@ def run_migration():
             raw_date = row.get('Date')
             formatted_date = raw_date.strftime('%Y-%m-%d') if pd.notnull(raw_date) else None
             
-            raw_priority = str(row.get('Priority', '')).strip().upper()
-            priority = raw_priority if raw_priority in ['HIGH', 'REGULAR'] else 'REGULAR'
-
             t2_rows.append({
                 "design_no": design_no, 
                 "parent_order_id": ord_id, 
@@ -155,24 +169,23 @@ def run_migration():
                 "budget": str(row.get('Budget', '')), 
                 "order_date": formatted_date,
                 "order_type": str(row.get('Order Type', 'Stock')), 
-                "priority": priority,
+                "priority": str(row.get('Priority', 'REGULAR')).strip().upper(),
                 "remark": str(row.get('Remark', '')), 
                 "status": final_status, 
                 "is_archived": is_archived,
-                "admin_status_manual": admin_status, # For Column I
-                "archive_manual": archive_flag       # For Column J
+                "admin_status_manual": admin_status,
+                "archive_manual": archive_flag
             })
         sequence_registry[combination_key] = current_seq + qty
 
     # --- C. UPDATE BIGQUERY AND GOOGLE SHEETS ---
     print(f"Uploading {len(t2_rows)} design items to BigQuery...")
     df_t2 = pd.DataFrame(t2_rows)
-    # Remove manual helper columns before SQL upload if preferred, or keep them for history
     cols_to_sql = ["design_no", "parent_order_id", "designer_code", "budget", "order_date", "order_type", "priority", "remark", "status", "is_archived"]
     bq_client.load_table_from_dataframe(df_t2[cols_to_sql], T2_TABLE_ID, job_config=bigquery.LoadJobConfig(write_disposition="WRITE_TRUNCATE")).result()
     
     update_google_sheets(t2_rows)
-    print("✅ Migration Complete! Manual overrides from Compilation processed.")
+    print("✅ Migration Complete!")
 
 if __name__ == "__main__":
     run_migration()
