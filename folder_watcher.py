@@ -31,20 +31,26 @@ def run_watcher():
 
     pending_list = pending_df['design_no'].tolist()
 
-    # Get filenames from Drive
+    # Fetch all filenames from Drive
     results = drive_service.files().list(
         q=f"'{FOLDER_ID}' in parents and trashed=false",
         fields="files(name)",
         pageSize=1000
     ).execute()
-    # ... inside the run_watcher function ...
-    drive_files = [f['name'].upper() for f in results.get('files', [])]
+    
+    # NEW HYPER-AGGRESSIVE MATCHING: 
+    # 1. Remove the extension (.jpg)
+    # 2. Convert to Uppercase
+    # 3. Strip all spaces
+    drive_files_clean = [os.path.splitext(f['name'])[0].upper().replace(" ", "") for f in results.get('files', [])]
 
     completed_list = []
     for d_no in pending_list:
-        clean_d_no = d_no.strip().upper()
-        # This checks if the design number is in the filename, ignoring .jpg, .png, etc.
-        if any(clean_d_no in fname for fname in drive_files):
+        clean_d_no = d_no.upper().replace(" ", "")
+        
+        # Check if our Design Number is INSIDE any of the filenames found in Drive
+        if any(clean_d_no in fname for fname in drive_files_clean):
+            print(f"✅ Match found for {d_no}!")
             completed_list.append(d_no)
 
     if completed_list:
