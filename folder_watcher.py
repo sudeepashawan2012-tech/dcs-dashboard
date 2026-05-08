@@ -37,12 +37,14 @@ def run_watcher():
         fields="files(name)",
         pageSize=1000
     ).execute()
+    # ... inside the run_watcher function ...
     drive_files = [f['name'].upper() for f in results.get('files', [])]
 
     completed_list = []
     for d_no in pending_list:
-        # SMART MATCH: Check if design number is ANYWHERE in any filename
-        if any(d_no.upper() in fname for fname in drive_files):
+        clean_d_no = d_no.strip().upper()
+        # This checks if the design number is in the filename, ignoring .jpg, .png, etc.
+        if any(clean_d_no in fname for fname in drive_files):
             completed_list.append(d_no)
 
     if completed_list:
