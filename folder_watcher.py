@@ -43,33 +43,39 @@ def run_watcher():
         pageSize=1000
     ).execute()
     
-    # 1. Clean Drive filenames: Remove .jpg, make UPPER, strip all SPACES
-    drive_files_clean = [os.path.splitext(f['name'])[0].upper().replace(" ", "").strip() for f in results.get('files', [])]
+    raw_files = results.get('files', [])
+    print(f"Scanned {len(raw_files)} files from Drive.")
 
     completed_list = []
+    
+    # We loop through every pending design
     for d_no in pending_list:
-        # 2. Clean SQL Design Number: make UPPER, strip all SPACES
+        # Clean the design number for a "smart match" (Upper case, no spaces)
         clean_d_no = str(d_no).upper().replace(" ", "").strip()
         
-        # 3. Match: Just like AppScript "includes"
-        if any(clean_d_no in fname for fname in drive_files_clean):
-            completed_list.append(d_no)
-        
-        # EXACT MIRROR OF APPSCRIPT: if (fileList[j].includes(designNo))
-        match_found = False
-        for filename in file_list:
-            if design_str in filename:
-                match_found = True
+        # Check every file in the drive
+        for f in raw_files:
+            # Clean the filename for comparison (Remove extension, Upper case, no spaces)
+            clean_filename = os.path.splitext(f['name'])[0].upper().replace(" ", "").strip()
+            
+            # EXACT MATCH LOGIC (Like AppScript)
+            if clean_d_no == clean_filename:
+                print(f"✅ Found Match: {d_no}")
+                completed_list.append(d_no)
+                break # Stop looking for this design once found
+            
+            # PARTIAL MATCH LOGIC (Just in case there is extra text in filename)
+            elif clean_d_no in clean_filename:
+                print(f"✅ Found Partial Match: {d_no} in {f['name']}")
+                completed_list.append(d_no)
                 break
-        
-        if match_found:
-            print(f"✅ Found: {design_str}")
-            completed_list.append(design_str)
 
     # 3. UPDATE BIGQUERY
     if completed_list:
+        # Remove duplicates just in case
+        completed_list = list(set(completed_list))
+        
         print(f"Updating {len(completed_list)} designs in SQL...")
-        # We update in chunks to avoid SQL errors
         format_ids = ",".join([f"'{i}'" for i in completed_list])
         update_query = f"UPDATE `{TABLE_ID}` SET status = 'COMPLETED' WHERE design_no IN ({format_ids})"
         bq_client.query(update_query).result()
