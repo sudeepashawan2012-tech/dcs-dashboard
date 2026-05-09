@@ -36,18 +36,24 @@ def run_watcher():
         return
     pending_list = pending_df['design_no'].tolist()
 
-    # Fetch Filenames from Drive (NO CLEANING YET)
+    # Fetch all filenames from Drive
     results = drive_service.files().list(
         q=f"'{FOLDER_ID}' in parents and trashed=false",
         fields="files(name)",
         pageSize=1000
     ).execute()
-    file_list = [f['name'] for f in results.get('files', [])]
-    print(f"Scanned {len(file_list)} files from Drive.")
+    
+    # 1. Clean Drive filenames: Remove .jpg, make UPPER, strip all SPACES
+    drive_files_clean = [os.path.splitext(f['name'])[0].upper().replace(" ", "").strip() for f in results.get('files', [])]
 
     completed_list = []
     for d_no in pending_list:
-        design_str = str(d_no).strip()
+        # 2. Clean SQL Design Number: make UPPER, strip all SPACES
+        clean_d_no = str(d_no).upper().replace(" ", "").strip()
+        
+        # 3. Match: Just like AppScript "includes"
+        if any(clean_d_no in fname for fname in drive_files_clean):
+            completed_list.append(d_no)
         
         # EXACT MIRROR OF APPSCRIPT: if (fileList[j].includes(designNo))
         match_found = False
