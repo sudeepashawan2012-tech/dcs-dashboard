@@ -129,7 +129,7 @@ def run_migration():
             
             t2_rows.append({
                 "design_no": design_no, "parent_order_id": ord_id, "designer_code": d_code,
-                "budget": str(row.get('Budget', '')), "order_date": row.get('Date').strftime('%Y-%m-%d') if pd.notnull(row.get('Date')) else None,
+                "budget": str(row.get('Budget', '')), "order_date": row.get('Date').strftime('%d/%m/%Y') if pd.notnull(row.get('Date')) else None,
                 "order_type": str(row.get('Order Type', 'Stock')), "priority": str(row.get('Priority', 'REGULAR')).upper(),
                 "remark": str(row.get('Remark', '')), "status": current_status, "is_archived": False,
                 "admin_status_manual": "ACTIVE", "archive_manual": "NO"
