@@ -105,6 +105,10 @@ def run_migration():
     # 2. READ MASTER ORDERS
     print("Fetching Master Order data from T1...")
     df_orders = bq_client.query(f"SELECT * FROM `{T1_TABLE_ID}`").to_dataframe()
+    
+    # DEBUG: Print actual column names from BigQuery to verify
+    print("Columns in T1:", df_orders.columns.tolist())
+    
     t2_rows = []
     sequence_registry = {}
 
@@ -117,6 +121,9 @@ def run_migration():
         except: qty = 0
         if qty <= 0: continue
 
+        # FIX: Robust Order Type lookup - checks both 'Order Type' and 'Order_Type'
+        order_type_val = row.get('Order Type') or row.get('Order_Type') or 'Stock'
+        
         d_code, p_code, c_code = designer_mapping.get(designer_raw, "D00"), product_codes.get(product_raw, "XX"), concept_codes.get(concept_raw, "XXX")
         combination_key = f"{customer}.{c_code}.{p_code}.{d_code.replace('D', '')}"
         current_seq = sequence_registry.get(combination_key, 0)
@@ -130,7 +137,7 @@ def run_migration():
             t2_rows.append({
                 "design_no": design_no, "parent_order_id": ord_id, "designer_code": d_code,
                 "budget": str(row.get('Budget', '')), "order_date": row.get('Date').strftime('%d/%m/%Y') if pd.notnull(row.get('Date')) else None,
-                "order_type": str(row.get('Order Type', 'Stock')), "priority": str(row.get('Priority', 'REGULAR')).upper(),
+                "order_type": str(order_type_val).strip(), "priority": str(row.get('Priority', 'REGULAR')).upper(),
                 "remark": str(row.get('Remark', '')), "status": current_status, "is_archived": False,
                 "admin_status_manual": "ACTIVE", "archive_manual": "NO"
             })
