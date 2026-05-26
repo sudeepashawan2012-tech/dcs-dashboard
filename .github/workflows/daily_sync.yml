@@ -1,10 +1,7 @@
 name: Factory Data Sync
 
 on:
-  schedule:
-    # This runs every hour, on the hour.
-    - cron: '*/2 * * * *'
-  workflow_dispatch: # Allows you to also run it manually from GitHub
+  workflow_dispatch:  # <-- Button in Sheets will hit this
 
 jobs:
   build:
@@ -26,6 +23,5 @@ jobs:
         env:
           GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
         run: |
-          # This temporary file helps GitHub "see" your credentials safely
           echo "$GCP_SA_KEY" > dcs-system-494410-5488af32c0c7.json
           python migrate.py
