@@ -1,7 +1,7 @@
 name: Factory Data Sync
 
 on:
-  workflow_dispatch:  # Only manual trigger (from GitHub UI or API)
+  workflow_dispatch:
 
 jobs:
   build:
